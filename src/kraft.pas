@@ -1,7 +1,7 @@
 (******************************************************************************
  *                            KRAFT PHYSICS ENGINE                            *
  ******************************************************************************
- *                        Version 2026-07-28-20-57-0000                       *
+ *                        Version 2026-09-09-23-53-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -47210,7 +47210,7 @@ begin
     result:=true;
     exit;
    end;
-   ContactPair:=ContactPair^.Next;
+   ContactPair:=ContactPair^.HashNext;
   end;
  end else if AShapeAContainerIndex>=0 then begin
   // Mesh versus mesh triangle sub pair: both sides carry a triangle index, so the pair is keyed by the four
@@ -47231,7 +47231,7 @@ begin
     result:=true;
     exit;
    end;
-   ContactPair:=ContactPair^.Next;
+   ContactPair:=ContactPair^.HashNext;
   end;
  end else begin
   HashTableBucket:=@fConvexMeshTriangleContactPairHashTable[HashTwoShapesAndTwoLongWords(AShapeA,AShapeB,AContainerIndex,AElementIndex) and high(TKraftContactPairHashTable)];
@@ -47247,7 +47247,7 @@ begin
     result:=true;
     exit;
    end;
-   ContactPair:=ContactPair^.Next;
+   ContactPair:=ContactPair^.HashNext;
   end;
  end;
 end;
@@ -50078,6 +50078,23 @@ begin
   fPhysics.fPostStepHookRigidBodies[fPostStepHookIndex]:=nil;
   fPostStepHookIndex:=-1;
   dec(fPhysics.fCountPostStepHookRigidBodies);
+ end;
+
+ // SetRigidBodyType raises the per type counter when a body enters a type and lowers it when it
+ // leaves it again, but a body destroyed while it still has a type never leaves it that way. So
+ // without this the counters would keep every body ever created instead of the living ones.
+ case fRigidBodyType of
+  krbtStatic:begin
+   dec(fPhysics.fStaticRigidBodyCount);
+  end;
+  krbtDynamic:begin
+   dec(fPhysics.fDynamicRigidBodyCount);
+  end;
+  krbtKinematic:begin
+   dec(fPhysics.fKinematicRigidBodyCount);
+  end;
+  else begin
+  end;
  end;
 
  if fStaticRigidBodyIsOnList then begin

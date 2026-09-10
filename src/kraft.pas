@@ -1,7 +1,7 @@
 (******************************************************************************
  *                            KRAFT PHYSICS ENGINE                            *
  ******************************************************************************
- *                        Version 2026-09-09-23-53-0000                       *
+ *                        Version 2026-09-10-23-55-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -51140,6 +51140,7 @@ begin
  PKraftVector3(pointer(@fWorldTransform[1,0]))^.xyz:=PKraftVector3(pointer(@Orientation[1,0]))^.xyz;
  PKraftVector3(pointer(@fWorldTransform[2,0]))^.xyz:=PKraftVector3(pointer(@Orientation[2,0]))^.xyz;
  UpdateWorldInertiaTensor;
+ fSweep.q0:=QuaternionFromMatrix3x3(Orientation);
  if not QuaternionCompareExact(fSweep.q,fSweep.q0) then begin
   result:=true;
   fSweep.c:=fSweep.c0;

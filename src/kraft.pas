@@ -1,7 +1,7 @@
 (******************************************************************************
  *                            KRAFT PHYSICS ENGINE                            *
  ******************************************************************************
- *                        Version 2026-09-10-23-55-0000                       *
+ *                        Version 2026-09-20-16-47-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -6166,6 +6166,14 @@ type TKraftForceMode=(kfmForce,        // The unit of the force parameter is app
 
        fWorldDeltaTime:TKraftScalar;
 
+       // The time span the motion prediction of the broad phase fat AABBs, of the mid phase triangle
+       // corridors and of the speculative contact margins has to cover. This is the nominal world delta
+       // time as long as Step is driven at the configured frequency, but Step also accepts an explicit
+       // delta time, and a caller stepping slower than the frequency would otherwise leave every one of
+       // those prediction windows too short, so that fast bodies pass straight through mesh geometry with
+       // no contact pair to run any continuous collision detection on.
+       fPredictionDeltaTime:TKraftScalar;
+
        fWorldInverseDeltaTime:TKraftScalar;
 
        fLastInverseDeltaTime:TKraftScalar;
@@ -6557,6 +6565,8 @@ type TKraftForceMode=(kfmForce,        // The unit of the force parameter is app
        property ContactManager:TKraftContactManager read fContactManager;
 
        property WorldDeltaTime:TKraftScalar read fWorldDeltaTime;
+
+       property PredictionDeltaTime:TKraftScalar read fPredictionDeltaTime;
 
        property WorldInverseDeltaTime:TKraftScalar read fWorldInverseDeltaTime;
 
@@ -37477,12 +37487,12 @@ begin
 
  if assigned(fRigidBody) then begin
 
-  WorldDisplacement:=Vector3ScalarMul(fRigidBody.fLinearVelocity,fPhysics.fWorldDeltaTime);
+  WorldDisplacement:=Vector3ScalarMul(fRigidBody.fLinearVelocity,fPhysics.fPredictionDeltaTime);
   if Vector3LengthSquared(WorldDisplacement)<Vector3LengthSquared(fRigidBody.fWorldDisplacement) then begin
    WorldDisplacement:=fRigidBody.fWorldDisplacement;
   end;
 
-  WorldBoundsExpansion:=Vector3Add(fRigidBody.fWorldBoundExpansion,Vector3ScalarMul(Vector3(fAngularMotionDisc,fAngularMotionDisc,fAngularMotionDisc),Vector3Length(fRigidBody.fAngularVelocity)*fPhysics.fWorldDeltaTime));
+  WorldBoundsExpansion:=Vector3Add(fRigidBody.fWorldBoundExpansion,Vector3ScalarMul(Vector3(fAngularMotionDisc,fAngularMotionDisc,fAngularMotionDisc),Vector3Length(fRigidBody.fAngularVelocity)*fPhysics.fPredictionDeltaTime));
 
   if (fRigidBody.fRigidBodyType<>krbtStatic) and (fStaticAABBTreeProxy>=0) then begin
    fPhysics.fBroadPhase.StaticMoveBuffer.Remove(fStaticAABBTreeProxy);
@@ -46627,12 +46637,12 @@ begin
   if assigned(fRigidBodyMesh) then begin
    RelativeLinearVelocity:=Vector3Sub(RelativeLinearVelocity,fRigidBodyMesh.fLinearVelocity);
   end;
-  Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,fRigidBodyConvex.fPhysics.fWorldDeltaTime),Transform);
-  BoundsExpansionScalar:=fShapeConvex.fAngularMotionDisc*Vector3Length(fRigidBodyConvex.fAngularVelocity)*fRigidBodyConvex.fPhysics.fWorldDeltaTime;
+  Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,fRigidBodyConvex.fPhysics.fPredictionDeltaTime),Transform);
+  BoundsExpansionScalar:=fShapeConvex.fAngularMotionDisc*Vector3Length(fRigidBodyConvex.fAngularVelocity)*fRigidBodyConvex.fPhysics.fPredictionDeltaTime;
   if assigned(fRigidBodyMesh) then begin
    // The mesh rotation shifts the convex AABB within the mesh-local frame, so widen the corridor by that swept span.
    Sphere:=SphereFromAABB(NewConvexAABBInMeshLocalSpace);
-   BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(fRigidBodyMesh.fAngularVelocity)*fRigidBodyConvex.fPhysics.fWorldDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
+   BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(fRigidBodyMesh.fAngularVelocity)*fRigidBodyConvex.fPhysics.fPredictionDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
   end;
   BoundsExpansion:=Vector3(BoundsExpansionScalar,BoundsExpansionScalar,BoundsExpansionScalar);
   fConvexAABBInMeshLocalSpace:=AABBStretch(NewConvexAABBInMeshLocalSpace,Displacement,BoundsExpansion);
@@ -47057,11 +47067,11 @@ begin
   // The prediction corridor must cover the relative motion of the two dynamic meshes, so a fast mesh against a
   // resting one does not leave the corridor empty. Both bodies always exist for a mesh versus mesh pair.
   RelativeLinearVelocity:=Vector3Sub(fRigidBodyMeshA.fLinearVelocity,fRigidBodyMeshB.fLinearVelocity);
-  Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,fRigidBodyMeshA.fPhysics.fWorldDeltaTime),Transform);
-  BoundsExpansionScalar:=fShapeMeshA.fAngularMotionDisc*Vector3Length(fRigidBodyMeshA.fAngularVelocity)*fRigidBodyMeshA.fPhysics.fWorldDeltaTime;
+  Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,fRigidBodyMeshA.fPhysics.fPredictionDeltaTime),Transform);
+  BoundsExpansionScalar:=fShapeMeshA.fAngularMotionDisc*Vector3Length(fRigidBodyMeshA.fAngularVelocity)*fRigidBodyMeshA.fPhysics.fPredictionDeltaTime;
   // The B mesh rotation shifts the A shape AABB within the B local frame, so widen the corridor by that swept span.
   Sphere:=SphereFromAABB(NewMeshAAABBInMeshBLocalSpace);
-  BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(fRigidBodyMeshB.fAngularVelocity)*fRigidBodyMeshA.fPhysics.fWorldDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
+  BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(fRigidBodyMeshB.fAngularVelocity)*fRigidBodyMeshA.fPhysics.fPredictionDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
   BoundsExpansion:=Vector3(BoundsExpansionScalar,BoundsExpansionScalar,BoundsExpansionScalar);
   fCorridorDisplacement:=Displacement;
   fCorridorBoundsExpansion:=BoundsExpansion;
@@ -47454,13 +47464,13 @@ begin
  if assigned(MeshContactPair.fRigidBodyMesh) then begin
   RelativeLinearVelocity:=Vector3Sub(RelativeLinearVelocity,MeshContactPair.fRigidBodyMesh.fLinearVelocity);
  end;
- Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,MeshContactPair.fRigidBodyConvex.fPhysics.fWorldDeltaTime),Transform);
+ Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,MeshContactPair.fRigidBodyConvex.fPhysics.fPredictionDeltaTime),Transform);
  ConvexAABBInMeshLocalSpace:=AABBHomogenTransform(MeshContactPair.fShapeConvex.fShapeAABB,Transform);
- BoundsExpansionScalar:=MeshContactPair.fShapeConvex.fAngularMotionDisc*Vector3Length(MeshContactPair.fRigidBodyConvex.fAngularVelocity)*MeshContactPair.fRigidBodyConvex.fPhysics.fWorldDeltaTime;
+ BoundsExpansionScalar:=MeshContactPair.fShapeConvex.fAngularMotionDisc*Vector3Length(MeshContactPair.fRigidBodyConvex.fAngularVelocity)*MeshContactPair.fRigidBodyConvex.fPhysics.fPredictionDeltaTime;
  if assigned(MeshContactPair.fRigidBodyMesh) then begin
   // The mesh rotation shifts the convex AABB within the mesh-local frame, so widen the corridor by that swept span.
   Sphere:=SphereFromAABB(ConvexAABBInMeshLocalSpace);
-  BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(MeshContactPair.fRigidBodyMesh.fAngularVelocity)*MeshContactPair.fRigidBodyConvex.fPhysics.fWorldDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
+  BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(MeshContactPair.fRigidBodyMesh.fAngularVelocity)*MeshContactPair.fRigidBodyConvex.fPhysics.fPredictionDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
  end;
  BoundsExpansion:=Vector3(BoundsExpansionScalar,BoundsExpansionScalar,BoundsExpansionScalar);
  MeshContactPair.fConvexAABBInMeshLocalSpace:=AABBStretch(ConvexAABBInMeshLocalSpace,Displacement,BoundsExpansion);
@@ -47540,12 +47550,12 @@ begin
  // The prediction corridor must cover the relative motion of the two dynamic meshes, so a fast mesh against a
  // resting one does not leave the corridor empty. Both bodies always exist for a mesh versus mesh pair.
  RelativeLinearVelocity:=Vector3Sub(MeshMeshContactPair.fRigidBodyMeshA.fLinearVelocity,MeshMeshContactPair.fRigidBodyMeshB.fLinearVelocity);
- Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fWorldDeltaTime),Transform);
+ Displacement:=Vector3TermMatrixMulBasis(Vector3ScalarMul(RelativeLinearVelocity,MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fPredictionDeltaTime),Transform);
  MeshAAABBInMeshBLocalSpace:=AABBHomogenTransform(MeshMeshContactPair.fShapeMeshA.fShapeAABB,Transform);
- BoundsExpansionScalar:=MeshMeshContactPair.fShapeMeshA.fAngularMotionDisc*Vector3Length(MeshMeshContactPair.fRigidBodyMeshA.fAngularVelocity)*MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fWorldDeltaTime;
+ BoundsExpansionScalar:=MeshMeshContactPair.fShapeMeshA.fAngularMotionDisc*Vector3Length(MeshMeshContactPair.fRigidBodyMeshA.fAngularVelocity)*MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fPredictionDeltaTime;
  // The B mesh rotation shifts the A shape AABB within the B local frame, so widen the corridor by that swept span.
  Sphere:=SphereFromAABB(MeshAAABBInMeshBLocalSpace);
- BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(MeshMeshContactPair.fRigidBodyMeshB.fAngularVelocity)*MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fWorldDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
+ BoundsExpansionScalar:=BoundsExpansionScalar+(Vector3Length(MeshMeshContactPair.fRigidBodyMeshB.fAngularVelocity)*MeshMeshContactPair.fRigidBodyMeshA.fPhysics.fPredictionDeltaTime*(Vector3Length(Sphere.Center)+Sphere.Radius));
  BoundsExpansion:=Vector3(BoundsExpansionScalar,BoundsExpansionScalar,BoundsExpansionScalar);
  MeshMeshContactPair.fCorridorDisplacement:=Displacement;
  MeshMeshContactPair.fCorridorBoundsExpansion:=BoundsExpansion;
@@ -47777,7 +47787,7 @@ end;
 
 procedure TKraftContactManager.ProcessContactPair(const ContactPair:PKraftContactPair;const ThreadIndex:TKraftInt32=0);
 begin
- ContactPair^.DetectCollisions(self,fPhysics.fTriangleShapes[ThreadIndex],ThreadIndex,true,fPhysics.fWorldDeltaTime);
+ ContactPair^.DetectCollisions(self,fPhysics.fTriangleShapes[ThreadIndex],ThreadIndex,true,fPhysics.fPredictionDeltaTime);
 end;
 
 {$ifdef KraftPasMP}
@@ -69076,6 +69086,8 @@ begin
 
  fWorldDeltaTime:=1.0/fWorldFrequency;
 
+ fPredictionDeltaTime:=fWorldDeltaTime;
+
  fWorldInverseDeltaTime:=fWorldFrequency;
 
  fLastInverseDeltaTime:=0.0;
@@ -69353,6 +69365,7 @@ procedure TKraft.SetFrequency(const aFrequency:TKraftScalar);
 begin
  fWorldFrequency:=aFrequency;
  fWorldDeltaTime:=1.0/fWorldFrequency;
+ fPredictionDeltaTime:=fWorldDeltaTime;
  fWorldInverseDeltaTime:=fWorldFrequency;
 end;
 
@@ -70920,7 +70933,7 @@ var Iteration,TryIteration,RootIteration,SeparationFunctionMode:TKraftInt32;
     MeshShapeA:TKraftShapeMesh;
     MeshA:TKraftMesh;
     MeshTriangleA:PKraftMeshTriangle;
-    Axis,{LocalVertex,va,vb,}eA,eB:TKraftVector3;
+    Axis,{LocalVertex,va,vb,}eA,eB,eD:TKraftVector3;
     LocalPlane:TKraftPlane;
     GJK:TKraftGJK;
     Shapes:array[0..1] of TKraftShape;
@@ -71238,12 +71251,24 @@ begin
       UniqueGJKVertices[1,1]:=Vector3TermMatrixMulInverted(Vector3TermMatrixMul(Shapes[1].GetLocalFeatureSupportVertex(UniqueGJKVertexIndices[1,1]),Transforms[1]),Transforms[0]);
       eA:=Vector3Sub(UniqueGJKVertices[0,1],UniqueGJKVertices[0,0]);
       eB:=Vector3Sub(UniqueGJKVertices[1,1],UniqueGJKVertices[1,0]);
-      Axis:=Vector3NormEx(Vector3Cross(eA,eB));
-      if Vector3Dot(Vector3Sub(eB,eA),Axis)<0.0 then begin
+      eD:=Vector3Sub(UniqueGJKVertices[1,0],UniqueGJKVertices[0,0]);
+      Axis:=Vector3Cross(eA,eB);
+      if Vector3LengthSquared(Axis)<EPSILON then begin
+       // Parallel edges have no cross product axis, which is the normal case for two flat faces meeting
+       // head on, so fall back to the plane through edge A that faces towards edge B, like the edge on A
+       // and vertex on B case does it
+       Axis:=Vector3Cross(Vector3Cross(eA,eD),eA);
+       if Vector3LengthSquared(Axis)<EPSILON then begin
+        // Collinear edges leave no perpendicular direction at all, so take the connecting direction itself
+        Axis:=eD;
+       end;
+      end;
+      Axis:=Vector3NormEx(Axis);
+      if Vector3Dot(eD,Axis)<0.0 then begin
        Axis:=Vector3Neg(Axis);
       end;
       LocalPlane.Normal:=Axis;
-      LocalPlane.Distance:=-Vector3Dot(LocalPlane.Normal,eA);
+      LocalPlane.Distance:=-Vector3Dot(LocalPlane.Normal,UniqueGJKVertices[0,0]);
       SeparationFunctionMode:=sfmEDGES;
      end;
      3:begin
@@ -71835,11 +71860,12 @@ var TryIndex,Index,SubIndex,LastCount,Count,IndexA,IndexB{,c{}:TKraftInt32;
     NeedUpdate:boolean;
     RigidBody,CurrentRigidBody,OtherRigidBody:TKraftRigidBody;
     ContactPair,MinimumContactPair:PKraftContactPair;
-    MinimumAlpha,Alpha,Alpha0,Beta:TKraftScalar;
+    MinimumAlpha,Alpha,Alpha0,Beta,NudgedAlpha,NudgeDistance,NudgeScale:TKraftScalar;
     Island:TKraftIsland;
     ContactPairEdge:PKraftContactPairEdge;
     RigidBodies:array[0..1] of TKraftRigidBody;
     BackupSweeps:array[0..1] of TKraftSweep;
+    NudgeVelocity:TKraftVector3;
     SubTimeStep:TKraftTimeStep;
 begin
 
@@ -71985,6 +72011,52 @@ begin
   RigidBodies[1].Advance(MinimumAlpha);
 
   MinimumContactPair^.DetectCollisions(fContactManager,fTriangleShapes[0],0,false,0.0);
+
+  if not (kcfColliding in MinimumContactPair^.Flags) then begin
+   // At the time of impact the shapes are still a target separation apart, and a one shot narrow phase
+   // produces no manifold for a pair that is merely touching, which is what happens between two flat faces
+   // meeting head on. Dropping the pair here would hand the body its full unclamped motion and let it pass
+   // straight through, so nudge it about two linear slops deeper instead and let the regular solver resolve
+   // it like any resting contact, the same way the motion clamping path does it. The nudge is expressed in
+   // alpha: a sweep runs from its own Alpha0 to 1.0, so its translation per unit alpha is its remaining
+   // translation divided by that window, and the pair closes at the difference of the two rates.
+   NudgeVelocity:=Vector3Origin;
+   for SubIndex:=0 to 1 do begin
+    NudgeScale:=1.0-BackupSweeps[SubIndex].Alpha0;
+    if NudgeScale>EPSILON then begin
+     if SubIndex=0 then begin
+      NudgeScale:=-1.0/NudgeScale;
+     end else begin
+      NudgeScale:=1.0/NudgeScale;
+     end;
+     NudgeVelocity:=Vector3Add(NudgeVelocity,
+                               Vector3ScalarMul(Vector3SubPosition(BackupSweeps[SubIndex].c,BackupSweeps[SubIndex].c0),
+                                                NudgeScale));
+    end;
+   end;
+   NudgeDistance:=Vector3Length(NudgeVelocity);
+   if NudgeDistance>EPSILON then begin
+    NudgedAlpha:=Min(1.0,MinimumAlpha+((2.0*fLinearSlop)/NudgeDistance));
+    if NudgedAlpha>MinimumAlpha then begin
+     RigidBodies[0].fSweep:=BackupSweeps[0];
+     RigidBodies[1].fSweep:=BackupSweeps[1];
+     RigidBodies[0].Advance(NudgedAlpha);
+     RigidBodies[1].Advance(NudgedAlpha);
+     MinimumContactPair^.DetectCollisions(fContactManager,fTriangleShapes[0],0,false,0.0);
+     if kcfColliding in MinimumContactPair^.Flags then begin
+      MinimumAlpha:=NudgedAlpha;
+     end else begin
+      // The nudge found nothing either, so restore the plain time of impact state for the handling below
+      RigidBodies[0].fSweep:=BackupSweeps[0];
+      RigidBodies[1].fSweep:=BackupSweeps[1];
+      RigidBodies[0].Advance(MinimumAlpha);
+      RigidBodies[1].Advance(MinimumAlpha);
+      MinimumContactPair^.DetectCollisions(fContactManager,fTriangleShapes[0],0,false,0.0);
+     end;
+    end;
+   end;
+  end;
+
 {$ifdef KraftConstraintGraphColoring}
   fConstraintGraph.SynchronizeContactPair(MinimumContactPair);
   if kcfColliding in MinimumContactPair^.Flags then begin
@@ -72342,6 +72414,12 @@ begin
  end else begin
   TimeStep.InverseDeltaTime:=1.0/TimeStep.DeltaTime;
  end;
+
+ // Stepping slower than the configured frequency must widen the motion prediction windows accordingly,
+ // otherwise the mid phase triangle corridors and the speculative contact margins cover only a fraction of
+ // the actual motion. Stepping faster keeps the nominal window, so the prediction never shrinks below what
+ // the configured frequency already asks for.
+ fPredictionDeltaTime:=Max(fWorldDeltaTime,TimeStep.DeltaTime);
  TimeStep.DeltaTimeRatio:=fLastInverseDeltaTime*TimeStep.DeltaTime;
  TimeStep.WarmStarting:=fWarmStarting;
 
